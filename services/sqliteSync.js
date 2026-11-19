@@ -11,6 +11,8 @@ export function getSqliteDb() {
   const candidates = [
     path.join(process.cwd(), "data", "badminton.sqlite"),
     path.join(process.cwd(), "..", "data", "badminton.sqlite"),
+    path.join(process.cwd(), "..", "frontend", "data", "badminton.sqlite"),
+    path.resolve("c:/Users/hp/Desktop/badmintonm/frontend/data/badminton.sqlite"),
     path.resolve("c:/Users/hp/Desktop/badmintonm/data/badminton.sqlite"),
   ];
 

@@ -35,6 +35,10 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 // Setup Socket.io for Real-time bidirectional WebSockets
 const allowedOrigins = [
   FRONTEND_URL,
+  "https://badminton.mediaiofficial.in",
+  "https://api.badminton.mediaiofficial.in",
+  "http://badminton.mediaiofficial.in",
+  "http://api.badminton.mediaiofficial.in",
   "http://localhost:3000",
   "http://localhost:3001",
   "http://127.0.0.1:3000",

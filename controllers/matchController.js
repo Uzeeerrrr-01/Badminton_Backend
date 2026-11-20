@@ -602,7 +602,9 @@ export async function handleTimerAction(req, res) {
           // Scenario A: A team is leading when time expires -> Leading team wins automatically!
           const winnerTeam = match.score_a > match.score_b ? "A" : "B";
           const winnerName = winnerTeam === "A" ? match.team_a_name : match.team_b_name;
-          const completedAt = new Date();
+          const completedAt = (match.started_at && match.timer_duration_seconds > 0)
+            ? new Date(new Date(match.started_at).getTime() + match.timer_duration_seconds * 1000)
+            : new Date();
 
           match.status = "completed";
           match.winner_team = winnerTeam;

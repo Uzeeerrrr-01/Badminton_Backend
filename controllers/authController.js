@@ -31,8 +31,10 @@ export async function login(req, res) {
 
     return res.json({
       success: true,
+      authenticated: true,
       token,
       admin: payload,
+      user: payload,
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -51,7 +53,11 @@ export async function getMe(req, res) {
     if (!admin) {
       return res.status(404).json({ error: "Admin not found." });
     }
-    return res.json({ admin });
+    return res.json({
+      authenticated: true,
+      admin,
+      user: admin,
+    });
   } catch (error) {
     console.error("GetMe error:", error);
     return res.status(500).json({ error: "Internal server error." });

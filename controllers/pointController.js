@@ -19,7 +19,35 @@ export async function getPoints(req, res) {
 
     const history = await PointHistory.find().sort({ created_at: -1 }).limit(100);
 
-    return res.json({ leaderboard, history });
+    const categories = [
+      "Men's Singles",
+      "Women's Singles",
+      "Men's Doubles",
+      "Women's Doubles",
+      "Mixed Doubles",
+    ];
+
+    // Compute top leaders for each category
+    const categoryLeaders = {};
+    for (const cat of categories) {
+      const topRecord = await TournamentPoint.findOne({ category: cat }).sort({
+        rank: 1,
+        total_tournament_points: -1,
+        matches_won: -1,
+      });
+      const count = await TournamentPoint.countDocuments({ category: cat });
+      categoryLeaders[cat] = {
+        leader: topRecord || null,
+        totalParticipants: count,
+      };
+    }
+
+    return res.json({
+      leaderboard,
+      history,
+      categoryLeaders,
+      categories,
+    });
   } catch (error) {
     console.error("GetPoints error:", error);
     return res.status(500).json({ error: "Failed to fetch leaderboard data." });

@@ -1,5 +1,6 @@
 import Match from "../models/Match.js";
 import Player from "../models/Player.js";
+import Team from "../models/Team.js";
 import TournamentSettings from "../models/TournamentSettings.js";
 import TournamentPoint from "../models/TournamentPoint.js";
 import PointHistory from "../models/PointHistory.js";
@@ -753,6 +754,52 @@ async function handleMatchCompletion(match, winnerTeam, winnerName, scoreA, scor
   realtime.broadcastPointsUpdate();
 }
 
+async function updateParticipantDirectStats(entityType, entityId, won, scored, conceded, ptsAwarded) {
+  try {
+    if (entityType === "player") {
+      const player = await Player.findOne({ $or: [{ id: entityId }, { player_id: entityId }] });
+      if (player) {
+        player.matches_played = (player.matches_played || 0) + 1;
+        if (won) player.matches_won = (player.matches_won || 0) + 1;
+        else player.matches_lost = (player.matches_lost || 0) + 1;
+        player.points_scored = (player.points_scored || 0) + scored;
+        player.points_conceded = (player.points_conceded || 0) + conceded;
+        player.tournament_points = (player.tournament_points || 0) + ptsAwarded;
+        player.win_rate = player.matches_played > 0
+          ? Math.round((player.matches_won / player.matches_played) * 100)
+          : 0;
+        player.updated_at = new Date();
+        await player.save();
+      }
+    } else if (entityType === "team") {
+      const team = await Team.findOne({ id: entityId });
+      if (team) {
+        team.matches_played = (team.matches_played || 0) + 1;
+        if (won) team.matches_won = (team.matches_won || 0) + 1;
+        else team.matches_lost = (team.matches_lost || 0) + 1;
+        team.points_scored = (team.points_scored || 0) + scored;
+        team.points_conceded = (team.points_conceded || 0) + conceded;
+        team.tournament_points = (team.tournament_points || 0) + ptsAwarded;
+        team.win_rate = team.matches_played > 0
+          ? Math.round((team.matches_won / team.matches_played) * 100)
+          : 0;
+        team.updated_at = new Date();
+        await team.save();
+
+        // Also propagate stats to individual teammates
+        if (team.player1_id) {
+          await updateParticipantDirectStats("player", team.player1_id, won, scored, conceded, ptsAwarded);
+        }
+        if (team.player2_id) {
+          await updateParticipantDirectStats("player", team.player2_id, won, scored, conceded, ptsAwarded);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("updateParticipantDirectStats error:", err);
+  }
+}
+
 async function recordParticipantPoints(entityType, entityId, entityName, category, won, scored, conceded, ptsAwarded) {
   let record = await TournamentPoint.findOne({ entity_id: entityId, category });
   if (record) {
@@ -762,6 +809,9 @@ async function recordParticipantPoints(entityType, entityId, entityName, categor
     record.points_scored += scored;
     record.points_conceded += conceded;
     record.total_tournament_points += ptsAwarded;
+    record.win_rate = record.matches_played > 0
+      ? Math.round((record.matches_won / record.matches_played) * 100)
+      : 0;
     record.updated_at = new Date();
     await record.save();
   } else {
@@ -778,9 +828,15 @@ async function recordParticipantPoints(entityType, entityId, entityName, categor
       points_scored: scored,
       points_conceded: conceded,
       total_tournament_points: ptsAwarded,
+      win_rate: won ? 100 : 0,
       rank: 1,
+      category_rank: 1,
+      overall_rank: 1,
     });
   }
+
+  // Update Player or Team document directly
+  await updateParticipantDirectStats(entityType, entityId, won, scored, conceded, ptsAwarded);
 
   const logId = `log-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`;
   await PointHistory.create({
@@ -795,40 +851,128 @@ async function recordParticipantPoints(entityType, entityId, entityName, categor
   });
 }
 
+/**
+ * Re-indexes all rankings within their respective categories and overall
+ */
 export async function recalculateRanks() {
-  const categories = [
+  const specificCategories = [
     "Men's Singles",
     "Women's Singles",
     "Men's Doubles",
     "Women's Doubles",
     "Mixed Doubles",
-    "All",
   ];
 
-  for (const cat of categories) {
-    const query = cat === "All" ? {} : { category: cat };
-    const records = await TournamentPoint.find(query).sort({
-      total_tournament_points: -1,
-      matches_won: -1,
-    });
-
-    // Custom sorting by points differential as tiebreaker
+  // 1. Calculate ranks WITHIN each specific category
+  for (const cat of specificCategories) {
+    const records = await TournamentPoint.find({ category: cat });
     records.sort((a, b) => {
-      if (b.total_tournament_points !== a.total_tournament_points) {
-        return b.total_tournament_points - a.total_tournament_points;
+      if ((b.total_tournament_points || 0) !== (a.total_tournament_points || 0)) {
+        return (b.total_tournament_points || 0) - (a.total_tournament_points || 0);
       }
-      if (b.matches_won !== a.matches_won) {
-        return b.matches_won - a.matches_won;
+      if ((b.matches_won || 0) !== (a.matches_won || 0)) {
+        return (b.matches_won || 0) - (a.matches_won || 0);
       }
-      const diffA = a.points_scored - a.points_conceded;
-      const diffB = b.points_scored - b.points_conceded;
+      const diffA = (a.points_scored || 0) - (a.points_conceded || 0);
+      const diffB = (b.points_scored || 0) - (b.points_conceded || 0);
       return diffB - diffA;
     });
 
-    let rank = 1;
+    let catRank = 1;
     for (const rec of records) {
-      rec.rank = rank++;
+      rec.category_rank = catRank;
+      rec.rank = catRank; // Default rank reflects position within their category
+      rec.win_rate = rec.matches_played > 0
+        ? Math.round((rec.matches_won / rec.matches_played) * 100)
+        : 0;
+      catRank++;
       await rec.save();
     }
+  }
+
+  // 2. Calculate OVERALL rank across all tournament participants
+  const allRecords = await TournamentPoint.find({});
+  allRecords.sort((a, b) => {
+    if ((b.total_tournament_points || 0) !== (a.total_tournament_points || 0)) {
+      return (b.total_tournament_points || 0) - (a.total_tournament_points || 0);
+    }
+    if ((b.matches_won || 0) !== (a.matches_won || 0)) {
+      return (b.matches_won || 0) - (a.matches_won || 0);
+    }
+    const diffA = (a.points_scored || 0) - (a.points_conceded || 0);
+    const diffB = (b.points_scored || 0) - (b.points_conceded || 0);
+    return diffB - diffA;
+  });
+
+  let ovrRank = 1;
+  for (const rec of allRecords) {
+    rec.overall_rank = ovrRank++;
+    await rec.save();
+  }
+}
+
+/**
+ * Self-healing aggregator that synchronizes Player and Team documents directly
+ * with all completed match outcomes in MongoDB.
+ */
+export async function syncAllParticipantStats() {
+  try {
+    const completedMatches = await Match.find({ status: "completed" });
+    let settings = await TournamentSettings.findOne();
+    if (!settings) settings = { points_per_win: 3, points_per_participation: 1 };
+    const winPoints = settings.points_per_win || 3;
+    const partPoints = settings.points_per_participation || 1;
+
+    // Reset player stats
+    await Player.updateMany({}, {
+      matches_played: 0,
+      matches_won: 0,
+      matches_lost: 0,
+      points_scored: 0,
+      points_conceded: 0,
+      tournament_points: 0,
+      win_rate: 0,
+    });
+
+    // Reset team stats
+    await Team.updateMany({}, {
+      matches_played: 0,
+      matches_won: 0,
+      matches_lost: 0,
+      points_scored: 0,
+      points_conceded: 0,
+      tournament_points: 0,
+      win_rate: 0,
+    });
+
+    // Process all completed matches
+    for (const m of completedMatches) {
+      const isWinnerA = m.winner_team === "A";
+      const isDoubles = isDoublesCategory(m.category);
+      const ptsA = (isWinnerA ? winPoints : 0) + partPoints;
+      const ptsB = (!isWinnerA ? winPoints : 0) + partPoints;
+
+      await updateParticipantDirectStats(
+        isDoubles ? "team" : "player",
+        m.team_a_id || m.team_a_player1_id,
+        isWinnerA,
+        m.score_a || 0,
+        m.score_b || 0,
+        ptsA
+      );
+
+      await updateParticipantDirectStats(
+        isDoubles ? "team" : "player",
+        m.team_b_id || m.team_b_player1_id,
+        !isWinnerA,
+        m.score_b || 0,
+        m.score_a || 0,
+        ptsB
+      );
+    }
+
+    await recalculateRanks();
+  } catch (err) {
+    console.error("syncAllParticipantStats error:", err);
   }
 }

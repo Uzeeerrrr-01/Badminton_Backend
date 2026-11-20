@@ -11,6 +11,14 @@ const PlayerSchema = new mongoose.Schema(
     profile_image: { type: String },
     registration_status: { type: String, default: "Active" },
     eligible_categories: [{ type: String }],
+    // Cumulative Tournament Statistics
+    matches_played: { type: Number, default: 0 },
+    matches_won: { type: Number, default: 0 },
+    matches_lost: { type: Number, default: 0 },
+    points_scored: { type: Number, default: 0 },
+    points_conceded: { type: Number, default: 0 },
+    tournament_points: { type: Number, default: 0 },
+    win_rate: { type: Number, default: 0 },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

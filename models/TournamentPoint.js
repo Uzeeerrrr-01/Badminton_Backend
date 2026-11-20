@@ -14,6 +14,9 @@ const TournamentPointSchema = new mongoose.Schema(
     points_conceded: { type: Number, default: 0 },
     total_tournament_points: { type: Number, default: 0 },
     rank: { type: Number, default: 1 },
+    category_rank: { type: Number, default: 1 },
+    overall_rank: { type: Number, default: 1 },
+    win_rate: { type: Number, default: 0 },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

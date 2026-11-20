@@ -25,6 +25,7 @@ import teamRoutes from "./routes/teamRoutes.js";
 import matchRoutes from "./routes/matchRoutes.js";
 import pointRoutes from "./routes/pointRoutes.js";
 import realtimeRoutes from "./routes/realtimeRoutes.js";
+import { syncAllParticipantStats } from "./controllers/matchController.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -128,6 +129,7 @@ app.use((err, req, res, next) => {
 // Connect database and start server
 async function startServer() {
   await connectDB();
+  syncAllParticipantStats().catch((err) => console.error("Initial stats sync error:", err));
   server.listen(PORT, () => {
     console.log(`====================================================`);
     console.log(`🏸 Badminton Tournament Backend Running!`);

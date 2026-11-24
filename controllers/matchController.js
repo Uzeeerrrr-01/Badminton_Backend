@@ -14,6 +14,7 @@ import {
   isDoublesCategory,
 } from "../services/scoringEngine.js";
 import { realtime } from "../services/realtimeService.js";
+import { checkAndUpdateRoundStatus } from "./roundController.js";
 
 async function enrichMatch(matchDoc) {
   if (!matchDoc) return null;
@@ -690,11 +691,20 @@ export async function handleTimerAction(req, res) {
 }
 
 async function handleMatchCompletion(match, winnerTeam, winnerName, scoreA, scoreB) {
-  // 1. Knockout progression
+  // Record official winner and loser
+  const isWinnerA = winnerTeam === "A";
+  match.winner_team = winnerTeam;
+  match.winner_name = winnerName;
+  match.loser_team = isWinnerA ? "B" : "A";
+  match.loser_name = isWinnerA ? match.team_b_name : match.team_a_name;
+  match.loser_id = isWinnerA
+    ? (match.team_b_id || match.team_b_player1_id)
+    : (match.team_a_id || match.team_a_player1_id);
+
+  // 1. Knockout progression (legacy slot mapping if defined)
   if (match.next_match_id && match.next_match_slot) {
     const nextMatch = await Match.findOne({ id: match.next_match_id });
     if (nextMatch) {
-      const isWinnerA = winnerTeam === "A";
       const winnerId = isWinnerA ? match.team_a_id : match.team_b_id;
       const winnerP1 = isWinnerA ? match.team_a_player1_id : match.team_b_player1_id;
       const winnerP2 = isWinnerA ? match.team_a_player2_id : match.team_b_player2_id;
@@ -718,42 +728,49 @@ async function handleMatchCompletion(match, winnerTeam, winnerName, scoreA, scor
     }
   }
 
-  // 2. Tournament Points & Leaderboard
-  let settings = await TournamentSettings.findOne({ id: "default" });
-  if (!settings) settings = { points_per_win: 3, points_per_participation: 1 };
+  // 2. Tournament Points & Leaderboard (Strictly Idempotent)
+  if (!match.points_awarded) {
+    let settings = await TournamentSettings.findOne({ id: "default" });
+    if (!settings) settings = { points_per_win: 3, points_per_participation: 1 };
 
-  const winPoints = settings.points_per_win || 3;
-  const partPoints = settings.points_per_participation || 1;
-  const isDoubles = isDoublesCategory(match.category);
+    const winPoints = settings.points_per_win || 3;
+    const partPoints = settings.points_per_participation || 1;
+    const isDoubles = isDoublesCategory(match.category);
 
-  const isWinnerA = winnerTeam === "A";
-  const pointsA = (isWinnerA ? winPoints : 0) + partPoints;
-  const pointsB = (!isWinnerA ? winPoints : 0) + partPoints;
+    const pointsA = (isWinnerA ? winPoints : 0) + partPoints;
+    const pointsB = (!isWinnerA ? winPoints : 0) + partPoints;
 
-  await recordParticipantPoints(
-    isDoubles ? "team" : "player",
-    match.team_a_id || match.team_a_player1_id,
-    match.team_a_name,
-    match.category,
-    isWinnerA,
-    scoreA,
-    scoreB,
-    pointsA
-  );
+    await recordParticipantPoints(
+      isDoubles ? "team" : "player",
+      match.team_a_id || match.team_a_player1_id,
+      match.team_a_name,
+      match.category,
+      isWinnerA,
+      scoreA,
+      scoreB,
+      pointsA
+    );
 
-  await recordParticipantPoints(
-    isDoubles ? "team" : "player",
-    match.team_b_id || match.team_b_player1_id,
-    match.team_b_name,
-    match.category,
-    !isWinnerA,
-    scoreB,
-    scoreA,
-    pointsB
-  );
+    await recordParticipantPoints(
+      isDoubles ? "team" : "player",
+      match.team_b_id || match.team_b_player1_id,
+      match.team_b_name,
+      match.category,
+      !isWinnerA,
+      scoreB,
+      scoreA,
+      pointsB
+    );
 
-  await recalculateRanks();
-  realtime.broadcastPointsUpdate();
+    match.points_awarded = true;
+    await recalculateRanks();
+    realtime.broadcastPointsUpdate();
+  }
+
+  // 3. Round completion and automatic knockout progression
+  if (match.roundId) {
+    await checkAndUpdateRoundStatus(match.roundId);
+  }
 }
 
 async function updateParticipantDirectStats(entityType, entityId, won, scored, conceded, ptsAwarded) {

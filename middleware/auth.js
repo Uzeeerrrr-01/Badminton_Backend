@@ -1,7 +1,9 @@
 import jwt from "jsonwebtoken";
 
 const JWT_SECRET =
-  process.env.JWT_SECRET || "badminton-tournament-secret-key-change-in-production";
+  process.env.ADMIN_JWT_SECRET ||
+  process.env.JWT_SECRET ||
+  "badminton-tournament-secret-key-change-in-production";
 
 export function requireAdmin(req, res, next) {
   let token = null;

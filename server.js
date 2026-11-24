@@ -24,6 +24,7 @@ import playerRoutes from "./routes/playerRoutes.js";
 import teamRoutes from "./routes/teamRoutes.js";
 import matchRoutes from "./routes/matchRoutes.js";
 import pointRoutes from "./routes/pointRoutes.js";
+import roundRoutes from "./routes/roundRoutes.js";
 import realtimeRoutes from "./routes/realtimeRoutes.js";
 import { syncAllParticipantStats } from "./controllers/matchController.js";
 
@@ -111,6 +112,7 @@ app.use("/api/players", playerRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/points", pointRoutes);
+app.use("/api/rounds", roundRoutes);
 app.use("/api/realtime", realtimeRoutes);
 
 // 404 handler

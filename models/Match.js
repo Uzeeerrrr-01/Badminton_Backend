@@ -3,6 +3,9 @@ import mongoose from "mongoose";
 const MatchSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true },
+    tournamentId: { type: String, default: "apex-badminton-2026", index: true },
+    roundId: { type: String, default: null, index: true },
+    roundNumber: { type: Number, default: 1 },
     category: { type: String, required: true },
     round: { type: String, default: "Round of 16" },
     match_number: { type: Number },
@@ -34,6 +37,10 @@ const MatchSchema = new mongoose.Schema(
     toss_choice: { type: String, default: null },
     winner_team: { type: String, default: null },
     winner_name: { type: String, default: null },
+    loser_team: { type: String, default: null },
+    loser_name: { type: String, default: null },
+    loser_id: { type: String, default: null },
+    points_awarded: { type: Boolean, default: false },
     next_match_id: { type: String, default: null },
     next_match_slot: { type: String, default: null },
     history: { type: [mongoose.Schema.Types.Mixed], default: [] },

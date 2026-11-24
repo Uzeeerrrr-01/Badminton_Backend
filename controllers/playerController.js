@@ -33,8 +33,53 @@ export async function getPlayers(req, res) {
       ];
     }
 
-    const players = await Player.find(filter).sort({ full_name: 1 });
-    return res.json({ players });
+    const players = await Player.find(filter).sort({ full_name: 1 }).lean();
+
+    // Enrich players with doubles and mixed doubles partnerships
+    const allTeams = await Team.find({ status: { $ne: "Withdrawn" } }).lean();
+    const allPlayers = await Player.find({}).lean();
+    const playerNameMap = new Map();
+    allPlayers.forEach((p) => {
+      playerNameMap.set(p.id, p.full_name);
+      if (p.player_id) playerNameMap.set(p.player_id, p.full_name);
+    });
+
+    const partnerMap = new Map();
+    allTeams.forEach((t) => {
+      const p1Id = t.player1_id;
+      const p2Id = t.player2_id;
+      const p1Name = playerNameMap.get(p1Id) || "Partner";
+      const p2Name = playerNameMap.get(p2Id) || "Partner";
+
+      if (p1Id) {
+        if (!partnerMap.has(p1Id)) partnerMap.set(p1Id, []);
+        partnerMap.get(p1Id).push({
+          category: t.category,
+          team_id: t.id,
+          team_name: t.name,
+          partner_id: p2Id,
+          partner_name: p2Name,
+        });
+      }
+
+      if (p2Id) {
+        if (!partnerMap.has(p2Id)) partnerMap.set(p2Id, []);
+        partnerMap.get(p2Id).push({
+          category: t.category,
+          team_id: t.id,
+          team_name: t.name,
+          partner_id: p1Id,
+          partner_name: p1Name,
+        });
+      }
+    });
+
+    const enrichedPlayers = players.map((p) => ({
+      ...p,
+      partnerships: partnerMap.get(p.id) || partnerMap.get(p.player_id) || [],
+    }));
+
+    return res.json({ players: enrichedPlayers });
   } catch (error) {
     console.error("GetPlayers error:", error);
     return res.status(500).json({ error: "Failed to fetch players." });
@@ -43,9 +88,28 @@ export async function getPlayers(req, res) {
 
 export async function getPlayer(req, res) {
   try {
-    const player = await Player.findOne({ id: req.params.id });
+    const player = await Player.findOne({ id: req.params.id }).lean();
     if (!player) return res.status(404).json({ error: "Player not found." });
-    return res.json({ player });
+
+    const teams = await Team.find({
+      $or: [{ player1_id: player.id }, { player2_id: player.id }],
+      status: { $ne: "Withdrawn" },
+    }).lean();
+
+    const partnerships = [];
+    for (const t of teams) {
+      const partnerId = t.player1_id === player.id ? t.player2_id : t.player1_id;
+      const partner = await Player.findOne({ id: partnerId }).lean();
+      partnerships.push({
+        category: t.category,
+        team_id: t.id,
+        team_name: t.name,
+        partner_id: partnerId,
+        partner_name: partner ? partner.full_name : "Partner",
+      });
+    }
+
+    return res.json({ player: { ...player, partnerships } });
   } catch (error) {
     console.error("GetPlayer error:", error);
     return res.status(500).json({ error: "Failed to fetch player." });

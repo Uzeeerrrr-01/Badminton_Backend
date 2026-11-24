@@ -86,7 +86,7 @@ async function runApiIntegrationTests() {
   // 3. Authorized preview fixture generation (using Mixed Doubles or fresh category)
   {
     console.log("\n--- TEST C: Authorized preview generation ---");
-    const testCat = "Mixed Doubles";
+    const testCat = "Women's Doubles";
     const res = await fetch(`${baseUrl}/api/rounds/preview`, {
       method: "POST",
       headers: {
@@ -95,8 +95,11 @@ async function runApiIntegrationTests() {
       },
       body: JSON.stringify({ category: testCat }),
     });
-    assert.strictEqual(res.status, 200, "Authorized preview should succeed");
     const data = await res.json();
+    if (res.status !== 200) {
+      console.error("Preview failed:", data);
+    }
+    assert.strictEqual(res.status, 200, "Authorized preview should succeed");
     assert.strictEqual(data.success, true);
     assert.ok(data.preview.fixtures.length > 0, "Fixtures should be generated");
     console.log(`✅ Test C Passed: Preview generated ${data.preview.fixtures.length} fixtures for ${testCat}`);

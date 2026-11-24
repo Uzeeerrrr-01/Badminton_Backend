@@ -126,8 +126,16 @@ export async function createPlayer(req, res) {
     const categories = Array.isArray(data.eligible_categories) ? data.eligible_categories : [];
     validateCategoryEligibility(data.gender, categories);
 
-    const total = await Player.countDocuments();
-    const playerId = `PLY-${String(total + 1).padStart(3, "0")}`;
+    let playerId = data.player_id?.trim()?.toUpperCase();
+    if (!playerId) {
+      const total = await Player.countDocuments();
+      let nextNum = total + 1;
+      playerId = `PLY-${String(nextNum).padStart(3, "0")}`;
+      while (await Player.exists({ player_id: playerId })) {
+        nextNum++;
+        playerId = `PLY-${String(nextNum).padStart(3, "0")}`;
+      }
+    }
     const id = `ply-${Date.now().toString(36)}`;
 
     const player = await Player.create({

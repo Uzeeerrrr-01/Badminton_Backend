@@ -126,16 +126,38 @@ export async function createPlayer(req, res) {
     const categories = Array.isArray(data.eligible_categories) ? data.eligible_categories : [];
     validateCategoryEligibility(data.gender, categories);
 
-    let playerId = data.player_id?.trim()?.toUpperCase();
-    if (!playerId) {
-      const total = await Player.countDocuments();
-      let nextNum = total + 1;
-      playerId = `PLY-${String(nextNum).padStart(3, "0")}`;
+    let playerId = data.player_id ? String(data.player_id).trim().toUpperCase() : null;
+
+    if (playerId) {
+      // Validate custom or user-provided player_id is not already taken
+      const existing = await Player.findOne({ player_id: playerId });
+      if (existing) {
+        return res.status(400).json({
+          error: `Player ID "${playerId}" is already in use by competitor ${existing.full_name}. Please choose a different ID or leave blank to auto-generate.`,
+        });
+      }
+    } else {
+      // Find the maximum existing numeric suffix to guarantee a collision-free sequential ID
+      const allPlayers = await Player.find({ player_id: /^PLY-\d+$/i }, { player_id: 1 }).lean();
+      let maxNum = 0;
+      for (const p of allPlayers) {
+        const match = p.player_id?.match(/^PLY-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+
+      let candidateNum = Math.max(maxNum + 1, 1);
+      playerId = `PLY-${String(candidateNum).padStart(3, "0")}`;
+
+      // Double-check existence to ensure 100% uniqueness
       while (await Player.exists({ player_id: playerId })) {
-        nextNum++;
-        playerId = `PLY-${String(nextNum).padStart(3, "0")}`;
+        candidateNum++;
+        playerId = `PLY-${String(candidateNum).padStart(3, "0")}`;
       }
     }
+
     const id = `ply-${Date.now().toString(36)}`;
 
     const player = await Player.create({
@@ -153,6 +175,12 @@ export async function createPlayer(req, res) {
     return res.status(201).json({ success: true, player });
   } catch (error) {
     console.error("CreatePlayer error:", error);
+    if (error.code === 11000) {
+      const dupId = error.keyValue?.player_id || "the specified value";
+      return res.status(400).json({
+        error: `Player ID "${dupId}" already exists in the tournament. Please provide a unique ID.`,
+      });
+    }
     return res.status(400).json({ error: error.message || "Failed to create player." });
   }
 }
@@ -169,6 +197,17 @@ export async function updatePlayer(req, res) {
 
     validateCategoryEligibility(gender, categories);
 
+    if (data.player_id && data.player_id.trim().toUpperCase() !== player.player_id) {
+      const newPlayerId = data.player_id.trim().toUpperCase();
+      const existing = await Player.findOne({ player_id: newPlayerId });
+      if (existing) {
+        return res.status(400).json({
+          error: `Player ID "${newPlayerId}" is already assigned to competitor ${existing.full_name}.`,
+        });
+      }
+      player.player_id = newPlayerId;
+    }
+
     Object.assign(player, data);
     player.gender = gender;
     player.eligible_categories = categories;
@@ -178,6 +217,11 @@ export async function updatePlayer(req, res) {
     return res.json({ success: true, player });
   } catch (error) {
     console.error("UpdatePlayer error:", error);
+    if (error.code === 11000) {
+      return res.status(400).json({
+        error: "A player with this Player ID already exists. Please choose a unique ID.",
+      });
+    }
     return res.status(400).json({ error: error.message || "Failed to update player." });
   }
 }

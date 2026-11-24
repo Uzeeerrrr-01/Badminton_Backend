@@ -46,19 +46,30 @@ export async function getTeam(req, res) {
 
 export async function createTeam(req, res) {
   try {
-    const { name, category, player1_id, player2_id } = req.body;
-    if (!name || !category || !player1_id || !player2_id) {
-      return res.status(400).json({ error: "Team name, category, and both players are required." });
+    let { name, category, player1_id, player2_id } = req.body;
+    if (!category || !player1_id || !player2_id) {
+      return res.status(400).json({ error: "Category and both players are required." });
     }
 
     if (player1_id === player2_id) {
       return res.status(400).json({ error: "Player 1 and Player 2 cannot be the same person." });
     }
 
+    const p1 = await Player.findOne({ id: player1_id });
+    const p2 = await Player.findOne({ id: player2_id });
+    if (!p1 || !p2) {
+      return res.status(400).json({ error: "Selected players could not be found." });
+    }
+
+    // In doubles and mixed doubles, team name defaults to "Team <Player 1> and <Player 2>"
+    if (!name || !name.trim() || /^team\s+[a-z0-9]+$/i.test(name.trim()) || /^mixed\s+team\s+[a-z0-9]+$/i.test(name.trim())) {
+      name = `Team ${p1.full_name} and ${p2.full_name}`;
+    }
+
     const id = `tm-${Date.now().toString(36)}`;
     const team = await Team.create({
       id,
-      name,
+      name: name.trim(),
       category,
       player1_id,
       player2_id,
@@ -77,6 +88,16 @@ export async function updateTeam(req, res) {
   try {
     const team = await Team.findOne({ id: req.params.id });
     if (!team) return res.status(404).json({ error: "Team not found." });
+
+    if (!req.body.name || !req.body.name.trim()) {
+      const p1Id = req.body.player1_id || team.player1_id;
+      const p2Id = req.body.player2_id || team.player2_id;
+      const p1 = await Player.findOne({ id: p1Id });
+      const p2 = await Player.findOne({ id: p2Id });
+      if (p1 && p2) {
+        req.body.name = `Team ${p1.full_name} and ${p2.full_name}`;
+      }
+    }
 
     Object.assign(team, req.body);
     team.updated_at = new Date();

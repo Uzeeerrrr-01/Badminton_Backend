@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Round from "../models/Round.js";
 import Match from "../models/Match.js";
 import Player from "../models/Player.js";
@@ -13,6 +14,11 @@ import {
 import { isDoublesCategory } from "../services/scoringEngine.js";
 import { syncMatchToSqlite } from "../services/sqliteSync.js";
 import { realtime } from "../services/realtimeService.js";
+
+function roundQuery(identifier) {
+  if (!identifier) return { id: null };
+  return mongoose.isValidObjectId(identifier) ? { $or: [{ id: identifier }, { _id: identifier }] } : { id: identifier };
+}
 
 /**
  * Preview fixtures before creating or publishing a round.
@@ -203,7 +209,7 @@ export async function createRound(req, res) {
 export async function publishRound(req, res) {
   try {
     const { id } = req.params;
-    const roundDoc = await Round.findOne({ $or: [{ id }, { _id: id }] });
+    const roundDoc = await Round.findOne(roundQuery(id));
     if (!roundDoc) return res.status(404).json({ error: "Round not found." });
 
     if (roundDoc.status === "published") {
@@ -323,7 +329,7 @@ async function createAndPersistMatches(fixtures, roundId, category, roundNumber)
 export async function resetRound(req, res) {
   try {
     const { id } = req.params;
-    const roundDoc = await Round.findOne({ $or: [{ id }, { _id: id }] });
+    const roundDoc = await Round.findOne(roundQuery(id));
     if (!roundDoc) return res.status(404).json({ error: "Round not found." });
 
     // Check if subsequent rounds exist
@@ -371,9 +377,7 @@ export async function resetRound(req, res) {
  */
 export async function checkAndUpdateRoundStatus(roundIdentifier) {
   try {
-    const roundDoc = await Round.findOne({
-      $or: [{ id: roundIdentifier }, { _id: roundIdentifier }],
-    });
+    const roundDoc = await Round.findOne(roundQuery(roundIdentifier));
     if (!roundDoc) return null;
     if (roundDoc.status === "completed") return roundDoc;
     if (!roundDoc.fixtures || roundDoc.fixtures.length === 0) return roundDoc;
@@ -640,7 +644,7 @@ export async function getRounds(req, res) {
 export async function getRound(req, res) {
   try {
     const { id } = req.params;
-    const roundDoc = await Round.findOne({ $or: [{ id }, { _id: id }] });
+    const roundDoc = await Round.findOne(roundQuery(id));
     if (!roundDoc) return res.status(404).json({ error: "Round not found." });
 
     const matches = await Match.find({ id: { $in: roundDoc.fixtures || [] } }).sort({ match_number: 1 });

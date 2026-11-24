@@ -83,22 +83,23 @@ async function runApiIntegrationTests() {
     console.log("✅ Test B Passed: Admin authenticated and JWT token issued");
   }
 
-  // 3. Authorized preview fixture generation
+  // 3. Authorized preview fixture generation (using Mixed Doubles or fresh category)
   {
     console.log("\n--- TEST C: Authorized preview generation ---");
+    const testCat = "Mixed Doubles";
     const res = await fetch(`${baseUrl}/api/rounds/preview`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${adminToken}`,
       },
-      body: JSON.stringify({ category: "Men's Singles" }),
+      body: JSON.stringify({ category: testCat }),
     });
     assert.strictEqual(res.status, 200, "Authorized preview should succeed");
     const data = await res.json();
     assert.strictEqual(data.success, true);
     assert.ok(data.preview.fixtures.length > 0, "Fixtures should be generated");
-    console.log(`✅ Test C Passed: Preview generated ${data.preview.fixtures.length} fixtures for Men's Singles`);
+    console.log(`✅ Test C Passed: Preview generated ${data.preview.fixtures.length} fixtures for ${testCat}`);
     if (data.preview.byeTeam) {
       console.log(`   - Bye allocated to: ${data.preview.byeTeam.name}`);
     }
